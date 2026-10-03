@@ -4,7 +4,15 @@ import numpy as np
 import pytest
 
 from simengine.engine import prototype as proto
-from simengine.engine.prototype import FOX, GRASS, HARE, default_world, tick
+from simengine.engine.prototype import (
+    FOX,
+    GRASS,
+    HARE,
+    default_world,
+    format_table,
+    simulate,
+    tick,
+)
 
 
 def run(state, params, ticks):
@@ -117,3 +125,34 @@ def test_validation_rejects_bad_input() -> None:
 
 def test_tick_length_is_one_season() -> None:
     assert proto.TICK_YEARS == 0.25
+
+def test_simulate_records_expected_ticks() -> None:
+    state, params = default_world()
+    ticks, history = simulate(state, params, ticks=10, every=4)
+    assert ticks == [0, 4, 8, 10]
+    assert history.shape == (4, 3)
+    assert np.array_equal(history[0], state.biomass.sum(axis=(1, 2)))
+
+
+def test_simulate_matches_manual_ticks() -> None:
+    state, params = default_world()
+    _, history = simulate(state, params, ticks=12, every=12)
+    manual = run(state, params, 12)
+    assert np.array_equal(history[-1], manual.biomass.sum(axis=(1, 2)))
+
+
+def test_simulate_rejects_bad_arguments() -> None:
+    state, params = default_world()
+    with pytest.raises(ValueError):
+        simulate(state, params, ticks=10, every=0)
+    with pytest.raises(ValueError):
+        simulate(state, params, ticks=-1, every=1)
+
+
+def test_format_table_shape() -> None:
+    state, params = default_world()
+    ticks, history = simulate(state, params, ticks=8, every=4)
+    lines = format_table(ticks, history).splitlines()
+    assert len(lines) == 2 + len(ticks)
+    assert "grass" in lines[0] and "hare" in lines[0] and "fox" in lines[0]
+    assert lines[2].lstrip().startswith("0.00")

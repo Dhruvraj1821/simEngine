@@ -6,9 +6,9 @@ already follow docs/DECISIONS.md item 6 so Phase 2 can generalize this.
 food_web[prey, predator] is the conversion efficiency: the fraction of eaten
 prey biomass that becomes predator biomass. Zero means no feeding link.
 """
-
+ 
 from __future__ import annotations
-
+import argparse
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -154,3 +154,52 @@ def default_world() -> tuple[State, Params]:
         active=np.ones(s, dtype=bool),
     )
     return state, params
+
+def simulate(
+    state: State, params: Params, ticks: int, every: int
+) -> tuple[list[int], Array]:
+    """Run `ticks` ticks, recording total biomass per species.
+
+    Records tick 0, every `every` ticks after that, and the final tick.
+    Returns (tick_numbers, history) with history shaped [n_records, S].
+    """
+    if ticks < 0:
+        raise ValueError("ticks must be non-negative")
+    if every < 1:
+        raise ValueError("every must be at least 1")
+    recorded: list[int] = []
+    rows: list[Array] = []
+    for t in range(ticks + 1):
+        if t % every == 0 or t == ticks:
+            recorded.append(t)
+            rows.append(state.biomass.sum(axis=(1, 2)))
+        if t < ticks:
+            state = tick(state, params)
+    return recorded, np.array(rows)
+
+
+def format_table(ticks: list[int], history: Array) -> str:
+    """Plain text table: one row per record, one column per species."""
+    names = SPECIES_NAMES[: history.shape[1]]
+    header = f"{'year':>8}" + "".join(f"{n:>12}" for n in names) + f"{'total':>12}"
+    lines = [header, "-" * len(header)]
+    for t, row in zip(ticks, history):
+        cells = "".join(f"{v:12.2f}" for v in row)
+        lines.append(f"{t * TICK_YEARS:8.2f}{cells}{row.sum():12.2f}")
+    return "\n".join(lines)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the prototype ecosystem")
+    parser.add_argument("--years", type=float, default=100.0)
+    parser.add_argument("--every-years", type=float, default=5.0)
+    args = parser.parse_args()
+    ticks = round(args.years / TICK_YEARS)
+    every = round(args.every_years / TICK_YEARS)
+    state, params = default_world()
+    recorded, history = simulate(state, params, ticks, max(every, 1))
+    print(format_table(recorded, history))
+
+
+if __name__ == "__main__":
+    main()
